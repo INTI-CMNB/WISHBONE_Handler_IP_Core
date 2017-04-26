@@ -1,0 +1,112 @@
+Copyright (c) 2005-2009 Salvador E. Tropea <salvador en inti gov ar>
+Copyright (c) 2005-2009 Instituto Nacional de Tecnología Industrial
+
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; version 2.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+ 02111-1307, USA
+
+  Este core es un "helper" para escribir testbenches que usan Wishbone.
+  La idea es reemplazar al Master de WISHBONE por un componente que en
+realidad es manejado por el testbench.
+  Ejemplos de uso de este módulo son los testbenches de los cores I2C y SIC.
+Otro ejemplo de uso es el testbench/wb_dummy_tb.vhdl que verifica un core muy
+simple (wb_dummy.vhdl). Adicionalmente wb_dummy.vhdl puede usarse para la
+verificación de maestros WISHBONE.
+  Si ud. usa ghdl y desea crear la biblioteca simplemente use make.
+
+  Hay dos mecanismos de uso:
+
+Mecanismo 1:
+============
+
+Ejemplo de instanciación:
+   -- Testbench side
+   signal addr        : std_logic_vector(8-1 downto 0);
+   signal datai       : std_logic_vector(8-1 downto 0);
+   signal datao       : std_logic_vector(8-1 downto 0);
+   signal rd          : std_logic:='0';
+   signal wr          : std_logic:='0';
+   signal rde         : std_logic;
+   signal wre         : std_logic;
+   -- WISHBONE side
+   signal wb_rst      : std_logic:='1';
+   signal wb_clk      : std_logic;--:='0';
+   signal wb_adr      : std_logic_vector(8-1 downto 0);
+   signal wb_dati     : std_logic_vector(8-1 downto 0):=(others => 'Z');
+   signal wb_dato     : std_logic_vector(8-1 downto 0);
+   signal wb_we       : std_logic;
+   signal wb_stb      : std_logic;
+   signal wb_cyc      : std_logic;
+   signal wb_ack      : std_logic:='0';
+   
+   -- WISHBONE master simulator
+   wb_master: WBHandler
+      port map(
+         addr_i => addr, data_i => datai, data_o => datao,
+         rd_i => rd, wr_i => wr, rde_o => rde, wre_o => wre,
+         wb_rst_i => wb_rst, wb_clk_i => wb_clk,  wb_ack_i => wb_ack,
+         wb_adr_o => wb_adr, wb_dat_i => wb_dati, wb_dat_o => wb_dato,
+         wb_we_o  => wb_we,  wb_stb_o => wb_stb,  wb_cyc_o => wb_cyc);
+
+Simulación de lectura:
+      WBRead(addr,SIC_FLGR,rd,rde);
+      assert datao="00000000" and irq='0'
+        report "Pending interrupts?!" severity failure;
+ En este ejemplo datao es el resultado de leer la dirección SIC_FLGR.
+
+Simulación de escritura:
+      WBWrite(addr,SIC_ENAR,datai,"00000001",wr,wre);
+ En este ejemplo escribimos "00000001" en la dirección SIC_ENAR.
+
+
+Mecanismo 2:
+============
+
+ En este caso no se simulan demoras de ningún tipo. Se deben crear dos
+señales que contendrán la interfaz con las funciones:
+
+   signal wbi         : wb_bus_i_type;
+   signal wbo         : wb_bus_o_type;
+
+ Luego se conectan con las señales WISHBONE:
+
+   -- Connect the records to the individual signals
+   wbi.clk  <= wb_clk;
+   wbi.rst  <= wb_rst;
+   wbi.dato <= wb_dato;
+   wbi.ack  <= wb_ack;
+
+   wb_stb   <= wbo.stb;
+   wb_we    <= wbo.we;
+   wb_adr   <= wbo.adr;
+   wb_dati  <= wbo.dati;
+
+ Finalmente se puede leer usando:
+
+      WBRead(REGISTRO,wbi,wbo);
+      assert wb_dato=x"03" report ...
+
+ Y escribir usando:
+
+      WBWrite(REGISTRO,VALOR,wbi,wbo);
+
+ Por defecto WBRead espera al flanco de subida del siguiente clock luego de
+la operación para que sea posible analizar el valor de wb_dato. Esto puede
+deshabilitarse usando:
+
+      WBRead(REGISTRO,wbi,wbo,false);
+
+ En el caso de WBWrite no hay tal espera, de ser requerida se puede usar:
+
+      WBWrite(REGISTRO,VALOR,wbi,wbo,true);
+
